@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MagazynScan — Komputer / Biuro</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    @media screen { #print-area { display: none; } }
+    @media print {
+      body * { visibility: hidden; }
+      #print-area, #print-area * { visibility: visible; }
+      #print-area {
+        display: grid !important;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        position: absolute;
+        left: 0; top: 0;
+        width: 100%;
+        padding: 10mm;
+        background: white;
+        color: black;
+      }
+      .print-label-card {
+        border: 1.5px dashed #334155;
+        padding: 10px;
+        text-align: center;
+        page-break-inside: avoid;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen flex flex-col">
+
+  <!-- GÓRNY PASEK -->
+  <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-bold">
+          PC
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight">MagazynScan — Panel Biurowy</h1>
+          <p class="text-xs text-slate-400">Zarządzanie stanami i druk etykiet QR</p>
+        </div>
+      </div>
+      <a href="index.html" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700">
+        📱 Otwórz Skaner Mobilny
+      </a>
+    </div>
+  </header>
+
+  <!-- GŁÓWNA ZAWARTOŚĆ -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-6 space-y-6">
+    
+    <!-- ZAKŁADKI -->
+    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+      <div class="flex gap-2">
+        <button onclick="switchTab('inventory')" id="tab-inventory" class="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white">
+          📦 Stan Magazynowy
+        </button>
+        <button onclick="switchTab('labels')" id="tab-labels" class="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700">
+          🖨️ Generator i Druk Etykiet QR
+        </button>
+        <button onclick="switchTab('history')" id="tab-history" class="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700">
+          📋 Historia Operacji
+        </button>
+      </div>
+
+      <button onclick="exportCSV()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-medium">
+        ⬇️ Eksport CSV (Excel)
+      </button>
+    </div>
+
+    <!-- PANEL 1: STAN MAGAZYNOWY -->
+    <div id="panel-inventory" class="space-y-4">
+      <!-- Dodawanie ręczne -->
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-900 p-4 rounded-xl border border-slate-800">
+        <input id="add-code" type="text" placeholder="Kod / SKU" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono" />
+        <input id="add-name" type="text" placeholder="Nazwa produktu" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm md:col-span-2" />
+        <input id="add-loc" type="text" placeholder="Regał (np. R-01-A)" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm" />
+        <div class="flex gap-2">
+          <input id="add-qty" type="number" value="1" min="0" class="w-20 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm" />
+          <button onclick="addItem()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-semibold text-white">Dodaj</button>
+        </div>
+      </div>
+
+      <!-- Wyszukiwarka -->
+      <input id="search-input" type="text" oninput="renderTable()" placeholder="Szukaj po nazwie, kodzie lub regale..." class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm focus:border-emerald-500 focus:outline-none" />
+
+      <!-- Tabela -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-950 text-slate-400 text-xs uppercase border-b border-slate-800">
+            <tr>
+              <th class="px-4 py-3">Kod / SKU</th>
+              <th class="px-4 py-3">Nazwa Produktu</th>
+              <th class="px-4 py-3">Regał</th>
+              <th class="px-4 py-3 text-center">Stan</th>
+              <th class="px-4 py-3 text-right">Akcje / Druk</th>
+            </tr>
+          </thead>
+          <tbody id="inventory-tbody" class="divide-y divide-slate-800"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PANEL 2: DRUKOWANIE ETYKIET QR -->
+    <div id="panel-labels" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+        <h2 class="font-bold text-base text-emerald-400">Generator Etykiet QR</h2>
+        <p class="text-xs text-slate-400">Wprowadź kod towaru lub lokalizacji (dla regałów użyj prefiksu <code>LOC:</code>, np. <code>LOC:R-01-A</code>).</p>
+        
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Typ</label>
+          <select id="lbl-type" onchange="changeLblType()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+            <option value="item">Towar / Produkt</option>
+            <option value="location">Lokalizacja / Regał (LOC:)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Kod w QR</label>
+          <input id="lbl-code" type="text" placeholder="SKU-102" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono" />
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Opis / Nazwa na etykiecie</label>
+          <input id="lbl-title" type="text" placeholder="Nazwa produktu" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm" />
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Liczba sztuk do wydruku</label>
+          <input id="lbl-copies" type="number" value="1" min="1" max="50" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm" />
+        </div>
+
+        <button onclick="addToPrintQueue()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-semibold text-white">
+          + Dodaj do arkusza druku
+        </button>
+      </div>
+
+      <!-- Podgląd arkusza -->
+      <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="font-bold text-base">Arkusz etykiet (<span id="queue-count">0</span> szt.)</h3>
+              <p class="text-xs text-slate-400">Gotowe do wydruku na drukarce biurowej.</p>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="clearQueue()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs text-slate-300">Wyczyść</button>
+              <button onclick="window.print()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-bold text-white shadow-lg">🖨️ Drukuj Etykiety</button>
+            </div>
+          </div>
+
+          <div id="print-preview-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto p-2 bg-slate-950 rounded-xl border border-slate-800">
+            <p class="col-span-full text-center text-xs text-slate-500 py-10">Brak etykiet w kolejce.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL 3: HISTORIA -->
+    <div id="panel-history" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-5">
+      <h3 class="font-bold text-base mb-4">Rejestr operacji</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-950 text-slate-400 uppercase border-b border-slate-800">
+            <tr>
+              <th class="px-3 py-2.5">Godzina</th>
+              <th class="px-3 py-2.5">Kod</th>
+              <th class="px-3 py-2.5">Produkt</th>
+              <th class="px-3 py-2.5">Regał</th>
+              <th class="px-3 py-2.5">Zmiana</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody" class="divide-y divide-slate-800"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div id="print-area"></div>
+  <div id="toast" class="fixed bottom-5 right-5 z-50 hidden bg-slate-800 border border-slate-700 text-white px-4 py-3 rounded-xl shadow-2xl text-sm"></div>
+
+  <script>
+    let inventory = JSON.parse(localStorage.getItem('ms_inventory') || '[]');
+    let historyLog = JSON.parse(localStorage.getItem('ms_history') || '[]');
+    let printQueue = [];
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderTable();
+      renderHistory();
+    });
+
+    function switchTab(tab) {
+      ['inventory', 'labels', 'history'].forEach(t => {
+        document.getElementById(`panel-${t}`).classList.add('hidden');
+        document.getElementById(`tab-${t}`).className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700';
+      });
+      document.getElementById(`panel-${tab}`).classList.remove('hidden');
+      document.getElementById(`tab-${tab}`).className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white';
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 2500);
+    }
+
+    function renderTable() {
+      const query = (document.getElementById('search-input')?.value || '').toLowerCase();
+      const tbody = document.getElementById('inventory-tbody');
+      const filtered = inventory.filter(i => i.code.toLowerCase().includes(query) || i.name.toLowerCase().includes(query) || i.location.toLowerCase().includes(query));
+
+      tbody.innerHTML = filtered.map(item => `
+        <tr class="hover:bg-slate-800/40">
+          <td class="px-4 py-3 font-mono text-xs text-emerald-400">${item.code}</td>
+          <td class="px-4 py-3 font-medium">${item.name}</td>
+          <td class="px-4 py-3 text-slate-400"><span class="bg-slate-800 px-2 py-0.5 rounded text-xs">${item.location}</span></td>
+          <td class="px-4 py-3 text-center">
+            <div class="inline-flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+              <button onclick="changeQty('${item.code}', -1)" class="text-slate-400 hover:text-rose-400 font-bold px-1">-</button>
+              <span class="font-bold min-w-[24px]">${item.qty}</span>
+              <button onclick="changeQty('${item.code}', 1)" class="text-slate-400 hover:text-emerald-400 font-bold px-1">+</button>
+            </div>
+          </td>
+          <td class="px-4 py-3 text-right space-x-2">
+            <button onclick="queueLabel('${item.code}', '${item.name}')" class="px-2.5 py-1 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded text-xs font-medium">🖨️ Etykieta</button>
+            <button onclick="deleteItem('${item.code}')" class="px-2 py-1 text-slate-500 hover:text-rose-400 text-xs">✕</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function changeQty(code, delta) {
+      const idx = inventory.findIndex(i => i.code === code);
+      if (idx >= 0) {
+        inventory[idx].qty = Math.max(0, inventory[idx].qty + delta);
+        historyLog.unshift({
+          time: new Date().toLocaleTimeString('pl-PL'),
+          code, name: inventory[idx].name, location: inventory[idx].location,
+          delta: delta > 0 ? `+${delta}` : `${delta}`
+        });
+        saveAndRender();
+      }
+    }
+
+    function addItem() {
+      const code = document.getElementById('add-code').value.trim();
+      const name = document.getElementById('add-name').value.trim();
+      const location = document.getElementById('add-loc').value.trim() || 'Ogólny';
+      const qty = parseInt(document.getElementById('add-qty').value) || 0;
+
+      if (!code || !name) {
+        showToast("⚠️ Wpisz kod i nazwę produktu.");
+        return;
+      }
+
+      inventory.unshift({ code, name, location, qty });
+      document.getElementById('add-code').value = '';
+      document.getElementById('add-name').value = '';
+      saveAndRender();
+      showToast("Dodano produkt do magazynu.");
+    }
+
+    function deleteItem(code) {
+      inventory = inventory.filter(i => i.code !== code);
+      saveAndRender();
+    }
+
+    function saveAndRender() {
+      localStorage.setItem('ms_inventory', JSON.stringify(inventory));
+      localStorage.setItem('ms_history', JSON.stringify(historyLog.slice(0, 150)));
+      renderTable();
+      renderHistory();
+    }
+
+    function renderHistory() {
+      document.getElementById('history-tbody').innerHTML = historyLog.map(h => `
+        <tr>
+          <td class="px-3 py-2 text-slate-400">${h.time}</td>
+          <td class="px-3 py-2 font-mono text-emerald-400">${h.code}</td>
+          <td class="px-3 py-2">${h.name}</td>
+          <td class="px-3 py-2 text-slate-400">${h.location}</td>
+          <td class="px-3 py-2 font-bold ${h.delta.startsWith('+') ? 'text-emerald-400' : 'text-rose-400'}">${h.delta}</td>
+        </tr>
+      `).join('');
+    }
+
+    function changeLblType() {
+      const type = document.getElementById('lbl-type').value;
+      const codeInput = document.getElementById('lbl-code');
+      if (type === 'location' && !codeInput.value.startsWith('LOC:')) {
+        codeInput.value = 'LOC:R-01-A';
+      } else if (type === 'item') {
+        codeInput.value = '';
+      }
+    }
+
+    function queueLabel(code, name) {
+      switchTab('labels');
+      document.getElementById('lbl-code').value = code;
+      document.getElementById('lbl-title').value = name;
+      addToPrintQueue();
+    }
+
+    function addToPrintQueue() {
+      const code = document.getElementById('lbl-code').value.trim();
+      const title = document.getElementById('lbl-title').value.trim() || code;
+      const copies = parseInt(document.getElementById('lbl-copies').value) || 1;
+
+      if (!code) {
+        showToast("⚠️ Wpisz kod do etykiety.");
+        return;
+      }
+
+      for (let i = 0; i < copies; i++) {
+        printQueue.push({ code, title });
+      }
+      renderPrintQueue();
+      showToast(`Dodano ${copies} etykiet do arkusza.`);
+    }
+
+    function clearQueue() {
+      printQueue = [];
+      renderPrintQueue();
+    }
+
+    function renderPrintQueue() {
+      document.getElementById('queue-count').textContent = printQueue.length;
+      const preview = document.getElementById('print-preview-grid');
+      const area = document.getElementById('print-area');
+
+      if (printQueue.length === 0) {
+        preview.innerHTML = '<p class="col-span-full text-center text-xs text-slate-500 py-10">Brak etykiet.</p>';
+        area.innerHTML = '';
+        return;
+      }
+
+      preview.innerHTML = '';
+      area.innerHTML = '';
+
+      printQueue.forEach((lbl, idx) => {
+        const card = document.createElement('div');
+        card.className = 'bg-white text-slate-900 p-3 rounded-lg flex flex-col items-center text-center shadow';
+        card.innerHTML = `<div id="qr-p-${idx}" class="mb-1"></div><div class="font-bold text-xs truncate w-full">${lbl.title}</div><div class="font-mono text-[10px] text-slate-600">${lbl.code}</div>`;
+        preview.appendChild(card);
+        new QRCode(document.getElementById(`qr-p-${idx}`), { text: lbl.code, width: 80, height: 80 });
+
+        const pCard = document.createElement('div');
+        pCard.className = 'print-label-card';
+        pCard.innerHTML = `<div id="qr-pr-${idx}" style="margin-bottom:6px;"></div><div style="font-weight:700; font-size:13px;">${lbl.title}</div><div style="font-family:monospace; font-size:11px;">${lbl.code}</div>`;
+        area.appendChild(pCard);
+        new QRCode(document.getElementById(`qr-pr-${idx}`), { text: lbl.code, width: 110, height: 110 });
+      });
+    }
+
+    function exportCSV() {
+      const headers = ['Kod', 'Nazwa', 'Regal', 'Ilosc'];
+      const rows = inventory.map(i => [i.code, `"${i.name}"`, i.location, i.qty]);
+      const csv = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `magazyn_${new Date().toISOString().slice(0,10)}.csv`;
+      link.click();
+    }
+  </script>
+</body>
+</html>
